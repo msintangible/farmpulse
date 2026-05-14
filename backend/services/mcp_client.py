@@ -89,6 +89,8 @@ class MongoMCPClient:
 
 
 
+mcp_client: MongoMCPClient = MongoMCPClient()
+
 async def test():
     client = MongoMCPClient()
     try:

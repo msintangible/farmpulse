@@ -3,7 +3,7 @@ from pathlib import Path
 import asyncio
 from dotenv import load_dotenv
 from google import genai
-from mcp_client import MongoMCPClient
+from mcp_client import mcp_client
 import sys
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-mcp = MongoMCPClient()
+
 
 
 TOOLS_PROMPT = """
@@ -70,7 +70,7 @@ async def run_agent(prompt: str):
         print("\nExecuting MCP tool:", tool)
 
         # 3. Call MCP
-        result = await mcp.call_tool(tool, args)
+        result = await mcp_client.call_tool(tool, args)
 
         print("\nMCP result:\n", result)
 
@@ -82,7 +82,7 @@ async def run_agent(prompt: str):
 async def main():
 
     print("Connecting MCP...")
-    await mcp.connect()
+    await mcp_client.connect()
     print("Connected!\n")
 
     prompt = "Create a user named Johnnyyy Downsyndorome with email john@test.com"
@@ -91,7 +91,7 @@ async def main():
 
     print("\nFINAL OUTPUT:\n", result)
 
-    await mcp.close()
+    await mcp_client.close()
 
 
 if __name__ == "__main__":
