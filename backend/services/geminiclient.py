@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
 import asyncio
+import json
 from dotenv import load_dotenv
 from google import genai
 
-from weatherpipeline import weather_pipeline
-
+from agenttools import execute_tool, TOOL_SPECS
 from mcp_client import mcp_client
 import sys
 
@@ -15,81 +15,119 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
+SYSTEM_PROMPT = """
+You are FarmPulse Agent, an agentic AI system for agriculture.
 
-TOOLS_PROMPT = """
-You are an AI agent with access to tools.
+Mission:
+- Monitor agricultural fields.
+- Use tools to gather evidence.
+- Produce a structured action plan grounded in tool outputs.
 
-TOOLS:
+Behavior rules:
+1. You must reason as a planner/executor, not a chatbot.
+2. If a tool is needed, return a tool_call decision.
+3. You may execute multiple tool calls over multiple steps.
+4. Only use tools that exist in TOOL_CATALOG.
+5. After enough evidence is gathered, return a final decision with an action plan.
 
-1. insert-many(database, collection, documents)
+Output contract:
+Return ONLY valid JSON with one of these shapes:
 
-2. get-weather(latitude, longitude)
-
-RULE:
-Always use TOOL format if calling tools.
-
-Example:
-
-TOOL: get-weather
 {
-  "latitude": 55.07,
-  "longitude": -7.36
+  "type": "tool_call",
+  "tool_name": "get-weather",
+  "arguments": {
+    "latitude": 51.5074,
+    "longitude": -0.1278
+  },
+  "reason": "Why this tool is needed next"
+}
+
+OR
+
+{
+  "type": "final",
+  "result": {
+    "summary": "short explanation",
+    "risk_level": "low|medium|high",
+    "action_plan": [
+      "step 1",
+      "step 2"
+    ],
+    "evidence": {
+      "weather": "facts from tool outputs"
+    }
+  }
 }
 """
 
-def parse_tool(text: str):
-    if "TOOL:" not in text:
-        return None, None
 
-    lines = text.split("\n")
-    tool = lines[0].replace("TOOL:", "").strip()
+def _extract_json_object(text: str) -> dict:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:].strip()
 
-    import json
-    args = json.loads("\n".join(lines[1:]))
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError(f"Model returned non-JSON content:\n{text}")
+        return json.loads(cleaned[start:end + 1])
 
-    return tool, args
-async def execute_tool(tool_name, args):
-    # 1. MongoDB tools go to MCP
-    if tool_name in ["insert-many", "find", "list-databases"]:
-        return await mcp_client.call_tool(tool_name, args)
 
-    # 2. Weather tool is custom (NOT MCP)
-    if tool_name == "get-weather":
-        weather = await  weather_pipeline(
-            args["latitude"],
-            args["longitude"]
-        )
-        return weather
-
-    # 3. fallback
-    raise ValueError(f"Unknown tool: {tool_name}")
-
-async def run_agent(prompt: str):
-
-    # 1. Ask Gemini
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=TOOLS_PROMPT + "\n\nUser: " + prompt
+def _build_iteration_prompt(user_prompt: str, steps: list[dict]) -> str:
+    return (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"TOOL_CATALOG:\n{json.dumps(TOOL_SPECS, indent=2)}\n\n"
+        f"USER_REQUEST:\n{user_prompt}\n\n"
+        f"PREVIOUS_STEPS:\n{json.dumps(steps, default=str, indent=2)}\n\n"
+        "Return only JSON."
     )
 
-    text = response.text
-    print("\nGemini output:\n", text)
 
-    # 2. Parse tool call
-    tool, args = parse_tool(text)
+async def run_agent(prompt: str):
+    steps: list[dict] = []
 
-    if tool:
+    for step_number in range(1, 7):
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=_build_iteration_prompt(prompt, steps)
+        )
 
-        print("\nExecuting tool:", tool)
+        text = response.text or ""
+        print(f"\nAgent decision step {step_number}:\n", text)
+        decision = _extract_json_object(text)
 
-        # 3. Call MCP
-        result = await execute_tool(tool, args)
+        decision_type = decision.get("type")
+        if decision_type == "tool_call":
+            tool_name = decision["tool_name"]
+            args = decision.get("arguments", {})
 
-        print("\nMCP result:\n", result)
+            print("\nExecuting tool:", tool_name)
+            tool_result = await execute_tool(tool_name, args)
+            print("\nTool result:\n", tool_result)
 
-        return result
+            steps.append(
+                {
+                    "step": step_number,
+                    "tool_name": tool_name,
+                    "arguments": args,
+                    "tool_result": tool_result,
+                    "reason": decision.get("reason"),
+                }
+            )
+            continue
 
-    return text
+        if decision_type == "final":
+            return decision.get("result", decision)
+
+        raise ValueError(f"Invalid agent decision type: {decision_type}")
+
+    raise RuntimeError("Agent exceeded max planning steps without returning a final response.")
 
 
 async def main():
