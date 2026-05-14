@@ -3,6 +3,9 @@ from pathlib import Path
 import asyncio
 from dotenv import load_dotenv
 from google import genai
+
+from weatherpipeline import weather_pipeline
+
 from mcp_client import mcp_client
 import sys
 
@@ -13,29 +16,25 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 
-
 TOOLS_PROMPT = """
-You are an AI agent with access to a MongoDB tool.
+You are an AI agent with access to tools.
 
-You can use:
+TOOLS:
 
-insert-many(database, collection, documents)
+1. insert-many(database, collection, documents)
 
-If you want to use a tool, respond EXACTLY like this:
+2. get-weather(latitude, longitude)
 
-TOOL: insert-many
+RULE:
+Always use TOOL format if calling tools.
+
+Example:
+
+TOOL: get-weather
 {
-  "database": "test",
-  "collection": "users",
-  "documents": [
-    {
-      "name": "johny Doe",
-      "email": "johny@test.com"
-    }
-  ]
+  "latitude": 55.07,
+  "longitude": -7.36
 }
-
-If no tool is needed, just answer normally.
 """
 
 def parse_tool(text: str):
@@ -49,7 +48,21 @@ def parse_tool(text: str):
     args = json.loads("\n".join(lines[1:]))
 
     return tool, args
+async def execute_tool(tool_name, args):
+    # 1. MongoDB tools go to MCP
+    if tool_name in ["insert-many", "find", "list-databases"]:
+        return await mcp_client.call_tool(tool_name, args)
 
+    # 2. Weather tool is custom (NOT MCP)
+    if tool_name == "get-weather":
+        weather = await  weather_pipeline(
+            args["latitude"],
+            args["longitude"]
+        )
+        return weather
+
+    # 3. fallback
+    raise ValueError(f"Unknown tool: {tool_name}")
 
 async def run_agent(prompt: str):
 
@@ -67,10 +80,10 @@ async def run_agent(prompt: str):
 
     if tool:
 
-        print("\nExecuting MCP tool:", tool)
+        print("\nExecuting tool:", tool)
 
         # 3. Call MCP
-        result = await mcp_client.call_tool(tool, args)
+        result = await execute_tool(tool, args)
 
         print("\nMCP result:\n", result)
 
@@ -85,13 +98,12 @@ async def main():
     await mcp_client.connect()
     print("Connected!\n")
 
-    prompt = "Create a user named Johnnyyy Downsyndorome with email john@test.com"
-
-    result = await run_agent(prompt)
-
-    print("\nFINAL OUTPUT:\n", result)
-
-    await mcp_client.close()
+    prompt = "Get the weather for London and store it in the database."
+    try:
+        result = await run_agent(prompt)
+        print("\nFINAL OUTPUT:\n", result)
+    finally:
+        await mcp_client.close()
 
 
 if __name__ == "__main__":
