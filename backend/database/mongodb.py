@@ -1,17 +1,28 @@
-import os
 from pathlib import Path
-from dotenv import load_dotenv
+import sys
+
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-uri = os.getenv("MONGODB_URI")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.core.settings import MONGODB_URI
 
 
-client = MongoClient(uri, server_api=ServerApi('1'))
+_client: MongoClient | None = None
 
-# Step 1: test connection
-client.admin.command('ping')
-print("Connected to MongoDB!")
+
+def get_mongo_client() -> MongoClient:
+    global _client
+
+    if _client is None:
+        if not MONGODB_URI:
+            raise RuntimeError("MONGODB_URI is not set.")
+        _client = MongoClient(MONGODB_URI, server_api=ServerApi("1"))
+
+    return _client
+
+
+def ping_mongodb() -> None:
+    get_mongo_client().admin.command("ping")
 
 

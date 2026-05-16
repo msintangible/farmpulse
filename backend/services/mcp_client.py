@@ -1,16 +1,16 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
 from contextlib import AsyncExitStack
 from datetime import timedelta
-from pathlib import Path
 
 import anyio
-from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.core.settings import MONGODB_URI
 
 
 class MongoMCPClient:
@@ -24,7 +24,11 @@ class MongoMCPClient:
             return
 
         process_env = dict(os.environ)
-        mongo_uri = process_env.get("MONGODB_URI") or process_env.get("MDB_MCP_CONNECTION_STRING")
+        mongo_uri = (
+            process_env.get("MONGODB_URI")
+            or process_env.get("MDB_MCP_CONNECTION_STRING")
+            or MONGODB_URI
+        )
         if mongo_uri:
             process_env["MDB_MCP_CONNECTION_STRING"] = mongo_uri
 

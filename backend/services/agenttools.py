@@ -1,6 +1,9 @@
+from pathlib import Path
+import sys
 from typing import Any
 
-from weatherpipeline import weather_pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.services.weatherpipeline import weather_pipeline
 
 
 TOOL_SPECS = {

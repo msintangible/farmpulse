@@ -1,18 +1,20 @@
-import os
-from pathlib import Path
 import asyncio
 import json
-from dotenv import load_dotenv
+import sys
+from pathlib import Path
+
+
 from google import genai
 
-from agenttools import execute_tool, TOOL_SPECS
-from mcp_client import mcp_client
-import sys
-
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.core.settings import GEMINI_API_KEY
+from backend.services.agenttools import execute_tool, TOOL_SPECS
+from backend.services.mcp_client import mcp_client
+
+
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 SYSTEM_PROMPT = """
