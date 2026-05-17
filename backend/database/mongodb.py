@@ -1,10 +1,6 @@
-from pathlib import Path
-import sys
-
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from backend.core.settings import MONGODB_URI
 
 

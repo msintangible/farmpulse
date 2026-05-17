@@ -1,11 +1,8 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
-import sys
 
 from fastapi import FastAPI
 import uvicorn
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.database.mongodb import ping_mongodb
 
 

@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-from pathlib import Path
 from contextlib import AsyncExitStack
 from datetime import timedelta
 
@@ -9,7 +8,6 @@ import anyio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from backend.core.settings import MONGODB_URI
 
 
