@@ -1,0 +1,10 @@
+anyio
+fastapi
+google-genai
+mcp
+openmeteo-requests
+pymongo
+python-dotenv
+requests-cache
+retry-requests
+uvicorn

@@ -1,4 +1,8 @@
-from mcp_client  import mcp_client
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.services.mcp_client import mcp_client
 
 
 async def store_weather(weather_data: dict):

@@ -45,6 +45,10 @@ Main collections:
 - Tool-based execution (not chatbot-style interaction)
 - Deterministic 6-step sequence ending with action-plan write
 
+#### Running the Gemini client locally
+- Preferred package mode: `python -m backend.services.geminiclient`
+- Direct script mode is also supported from `backend\services`: `python geminiclient.py`
+
 ## Agent flow
 
 1. `get_field_baseline`
