@@ -14,7 +14,11 @@ from backend.services.agenttools import execute_tool, TOOL_SPECS
 from backend.services.mcp_client import mcp_client
 
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(
+    vertexai=True,
+    project="farmpulse-496900",
+    location="us-central1",
+)
 
 
 SYSTEM_PROMPT = """
