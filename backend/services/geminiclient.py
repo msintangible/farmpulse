@@ -9,7 +9,12 @@ from google import genai
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from backend.core.settings import GEMINI_API_KEY
+# DEPRECATED: the API-key Gemini path is replaced by Vertex AI via Google ADK
+# (ADR-001); removing this whole module is BE-1's migration. The key is read
+# from the env locally so it no longer couples to core.settings — the only
+# remaining gemini-API-key reference in the codebase (gate criterion 5).
+import os
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 from backend.services.agenttools import execute_tool, TOOL_SPECS
 from backend.services.mcp_client import mcp_client
 

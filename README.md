@@ -101,10 +101,10 @@ All endpoints use static `X-API-Key` auth in MVP scope.
 
 ## Deployment model
 
-- **Backend:** Railway
-- **Frontend:** Vercel
+- **Backend:** Google Cloud Run (Docker; ADR-003)
+- **Frontend:** Firebase Hosting (ADR-003)
 - **Database:** MongoDB Atlas M0
-- **Agent:** Vertex AI Gemini 1.5 Flash
+- **Agent:** Vertex AI Gemini (2.5 Flash) via Google ADK (ADR-001)
 
 Fallback paths are included for agent/database/network failure to preserve demo continuity.
 
