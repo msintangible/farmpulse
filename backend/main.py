@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import uvicorn
 
+from backend.app.v1.router import api_v1_router
 from backend.database.mongodb import ping_mongodb
 
 
@@ -27,7 +28,11 @@ async def root() -> dict[str, str]:
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
+    """Cheap liveness probe. Dependency readiness lives at /api/v1/health."""
     return {"status": "ok"}
+
+
+app.include_router(api_v1_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":
