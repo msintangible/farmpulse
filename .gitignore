@@ -218,4 +218,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Docs - not for public repo
-docs/
+docs/node_modules/
