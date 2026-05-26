@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
-import { ArrowLeft, Activity, DollarSign, TrendingDown, AlertCircle, Sparkles, Clock, Thermometer, Droplets, Cloud } from 'lucide-react';
-import { mockFields, mockAnalysisResults, getNDVIStatus, getSeverityColor, Field, AnalysisResult } from '../data/mockData';
+import { ArrowLeft, Activity, DollarSign, TrendingDown, AlertCircle, Sparkles, Clock, Thermometer, Droplets, Cloud, RefreshCw } from 'lucide-react';
+import { getFieldDetail, analyzeField, FieldDetail, AnalysisResult } from '../services/api';
+import { getNDVIStatus, getSeverityColor } from '../data/mockData';
 import ResultsModal from './ResultsModal';
+import { Skeleton } from './ui/skeleton';
 import '../utils/leafletConfig';
 import 'leaflet/dist/leaflet.css';
 
@@ -19,54 +21,210 @@ function MapController({ center }: { center: [number, number] }) {
 
 export default function FieldDetailView() {
   const { farmId, fieldId } = useParams();
-  const [selectedField, setSelectedField] = useState<Field | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [fieldDetail, setFieldDetail] = useState<FieldDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
 
-  const farmFields = mockFields.filter((f) => f.farmId === farmId);
-  const currentField = farmFields.find((f) => f.id === fieldId) || farmFields[0];
-
+  // Fetch field details on mount or when farmId/fieldId changes
   useEffect(() => {
-    if (currentField) {
-      setSelectedField(currentField);
-      const existingAnalysis = mockAnalysisResults[currentField.id];
-      if (existingAnalysis) {
-        setAnalysisResult(existingAnalysis);
+    const fetchFieldDetail = async () => {
+      if (!farmId || !fieldId) {
+        setError('Farm ID and Field ID are required');
+        setLoading(false);
+        return;
       }
-    }
-  }, [currentField]);
 
-  const handleRunAnalysis = () => {
-    setIsAnalyzing(true);
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getFieldDetail(farmId, fieldId);
+        setFieldDetail(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load field details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFieldDetail();
+  }, [farmId, fieldId]);
+
+  const handleRunAnalysis = async () => {
+    if (!farmId || !fieldId) return;
+
+    setAnalyzing(true);
+    setAnalysisError(null);
     setAnalysisProgress(0);
 
+    // Progress animation
     const interval = setInterval(() => {
       setAnalysisProgress((prev) => {
-        if (prev >= 100) {
+        if (prev >= 95) {
           clearInterval(interval);
-          return 100;
+          return 95;
         }
         return prev + 3.33;
       });
     }, 100);
 
-    setTimeout(() => {
-      setIsAnalyzing(false);
-      if (selectedField) {
-        const result = mockAnalysisResults[selectedField.id];
-        setAnalysisResult(result);
-        setShowResults(true);
-      }
-    }, 3000);
+    try {
+      const result = await analyzeField(farmId, fieldId);
+      
+      // Complete progress
+      setAnalysisProgress(100);
+      clearInterval(interval);
+      
+      // Update field detail with new analysis result
+      setFieldDetail((prev) => prev ? { ...prev, analysisResult: result } : null);
+      setShowResults(true);
+    } catch (err) {
+      clearInterval(interval);
+      setAnalysisError(err instanceof Error ? err.message : 'Failed to analyze field');
+    } finally {
+      setAnalyzing(false);
+      setAnalysisProgress(0);
+    }
   };
 
-  if (!selectedField) {
-    return <div className="p-8">Loading...</div>;
+  const handleRetry = () => {
+    setError(null);
+    setLoading(true);
+    // Trigger re-fetch by updating a dependency
+    if (farmId && fieldId) {
+      getFieldDetail(farmId, fieldId)
+        .then((data) => {
+          setFieldDetail(data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : 'Failed to load field details');
+          setLoading(false);
+        });
+    }
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b sticky top-0 z-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Link
+                  to={`/farm/${farmId}`}
+                  className="size-10 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors"
+                >
+                  <ArrowLeft className="size-5 text-gray-700" />
+                </Link>
+                <div>
+                  <Skeleton className="h-6 w-48 mb-2" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              </div>
+              <Skeleton className="h-12 w-40" />
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <Skeleton className="h-96 rounded-xl" />
+              <Skeleton className="h-64 rounded-xl" />
+            </div>
+            <div className="space-y-6">
+              <Skeleton className="h-80 rounded-xl" />
+              <Skeleton className="h-64 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  const ndviStatus = getNDVIStatus(selectedField.ndviScore);
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b sticky top-0 z-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center gap-4">
+              <Link
+                to={`/farm/${farmId}`}
+                className="size-10 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors"
+              >
+                <ArrowLeft className="size-5 text-gray-700" />
+              </Link>
+              <h1 className="text-xl font-semibold text-gray-900">Field Details</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-white rounded-xl border-2 border-red-200 p-8 text-center">
+            <div className="size-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="size-8 text-red-600" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Field Details</h2>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <button
+              onClick={handleRetry}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <RefreshCw className="size-5" />
+              <span>Retry</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Not found state
+  if (!fieldDetail) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b sticky top-0 z-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center gap-4">
+              <Link
+                to={`/farm/${farmId}`}
+                className="size-10 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors"
+              >
+                <ArrowLeft className="size-5 text-gray-700" />
+              </Link>
+              <h1 className="text-xl font-semibold text-gray-900">Field Details</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center">
+            <div className="size-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="size-8 text-gray-600" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Field Not Found</h2>
+            <p className="text-gray-600 mb-6">The requested field could not be found.</p>
+            <Link
+              to={`/farm/${farmId}`}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <ArrowLeft className="size-5" />
+              <span>Back to Farm</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const ndviStatus = getNDVIStatus(fieldDetail.ndviScore);
+  const analysisResult = fieldDetail.analysisResult;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -82,19 +240,19 @@ export default function FieldDetailView() {
                 <ArrowLeft className="size-5 text-gray-700" />
               </Link>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">{selectedField.name}</h1>
+                <h1 className="text-xl font-semibold text-gray-900">{fieldDetail.name}</h1>
                 <p className="text-sm text-gray-600">
-                  {selectedField.cropType} • {selectedField.size} acres
+                  {fieldDetail.cropType} • {fieldDetail.size} acres
                 </p>
               </div>
             </div>
 
             <button
               onClick={handleRunAnalysis}
-              disabled={isAnalyzing}
+              disabled={analyzing}
               className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/30"
             >
-              {isAnalyzing ? (
+              {analyzing ? (
                 <>
                   <div className="size-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Analyzing...</span>
@@ -118,7 +276,7 @@ export default function FieldDetailView() {
             <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden shadow-sm">
               <div className="h-96 relative">
                 <MapContainer
-                  center={selectedField.coordinates}
+                  center={fieldDetail.coordinates}
                   zoom={13}
                   className="size-full"
                   zoomControl={true}
@@ -128,15 +286,15 @@ export default function FieldDetailView() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   />
                   <Polygon
-                    positions={selectedField.boundary}
+                    positions={fieldDetail.boundary}
                     pathOptions={{
-                      color: selectedField.ndviScore >= 0.6 ? '#16a34a' : selectedField.ndviScore >= 0.45 ? '#eab308' : '#dc2626',
-                      fillColor: selectedField.ndviScore >= 0.6 ? '#22c55e' : selectedField.ndviScore >= 0.45 ? '#facc15' : '#ef4444',
+                      color: fieldDetail.ndviScore >= 0.6 ? '#16a34a' : fieldDetail.ndviScore >= 0.45 ? '#eab308' : '#dc2626',
+                      fillColor: fieldDetail.ndviScore >= 0.6 ? '#22c55e' : fieldDetail.ndviScore >= 0.45 ? '#facc15' : '#ef4444',
                       fillOpacity: 0.3,
                       weight: 3,
                     }}
                   />
-                  <MapController center={selectedField.coordinates} />
+                  <MapController center={fieldDetail.coordinates} />
                 </MapContainer>
               </div>
 
@@ -146,20 +304,20 @@ export default function FieldDetailView() {
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Field Size</div>
                     <div className="text-sm font-semibold text-gray-900">
-                      {selectedField.size} acres
+                      {fieldDetail.size} acres
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Crop Type</div>
                     <div className="text-sm font-semibold text-gray-900">
-                      {selectedField.cropType}
+                      {fieldDetail.cropType}
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Last Updated</div>
                     <div className="text-sm font-semibold text-gray-900 flex items-center gap-1">
                       <Clock className="size-3" />
-                      {new Date(selectedField.lastUpdated).toLocaleDateString('en-US', {
+                      {new Date(fieldDetail.lastUpdated).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                       })}
@@ -169,8 +327,30 @@ export default function FieldDetailView() {
               </div>
             </div>
 
+            {/* Analysis Error */}
+            {analysisError && !analyzing && (
+              <div className="bg-white rounded-xl border-2 border-red-200 p-6 shadow-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="size-10 bg-red-100 rounded-full flex items-center justify-center">
+                    <AlertCircle className="size-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Analysis Failed</h3>
+                    <p className="text-sm text-gray-600">{analysisError}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleRunAnalysis}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                >
+                  <RefreshCw className="size-4" />
+                  <span>Try Again</span>
+                </button>
+              </div>
+            )}
+
             {/* Analysis Progress */}
-            {isAnalyzing && (
+            {analyzing && (
               <div className="bg-white rounded-xl border-2 border-green-200 p-6 shadow-lg">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="size-10 bg-green-100 rounded-full flex items-center justify-center">
@@ -201,7 +381,7 @@ export default function FieldDetailView() {
             )}
 
             {/* Analysis Results Card */}
-            {analysisResult && !isAnalyzing && (
+            {analysisResult && !analyzing && (
               <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-gray-900">Latest Analysis Results</h3>
@@ -248,7 +428,7 @@ export default function FieldDetailView() {
                 <div className="border-t pt-4">
                   <h4 className="text-sm font-semibold text-gray-900 mb-3">Top Recommendations</h4>
                   <ul className="space-y-2">
-                    {analysisResult.recommendations.slice(0, 3).map((rec, idx) => (
+                    {analysisResult.recommendations.slice(0, 3).map((rec: string, idx: number) => (
                       <li key={idx} className="flex gap-2 text-sm text-gray-700">
                         <span className="text-green-600 shrink-0">•</span>
                         <span>{rec}</span>
@@ -272,7 +452,7 @@ export default function FieldDetailView() {
               <div className="mb-4">
                 <div className="flex items-end justify-center gap-2 mb-2">
                   <span className="text-4xl font-bold text-gray-900">
-                    {(selectedField.ndviScore * 100).toFixed(0)}
+                    {(fieldDetail.ndviScore * 100).toFixed(0)}
                   </span>
                   <span className="text-lg text-gray-600 mb-1">/ 100</span>
                 </div>
@@ -350,7 +530,7 @@ export default function FieldDetailView() {
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900">Latest Analysis</div>
                     <div className="text-xs text-gray-600">
-                      {selectedField.lastUpdated}
+                      {fieldDetail.lastUpdated}
                     </div>
                   </div>
                   <div className="text-xs font-medium text-green-600">Complete</div>
@@ -381,7 +561,7 @@ export default function FieldDetailView() {
       {showResults && analysisResult && (
         <ResultsModal
           analysisResult={analysisResult}
-          field={selectedField}
+          field={fieldDetail}
           onClose={() => setShowResults(false)}
         />
       )}
